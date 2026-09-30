@@ -561,6 +561,7 @@ class TestCharm:
             "PIPELINE_LOG_LEVEL": "1",
             "PUBLISH_LOGS": "true",
             "CACHE_IMAGE": harness.charm.config["cache-image"],
+            "CACHEENABLED": "true",
             "V2_DRIVER_IMAGE": harness.charm.config["driver-image"],
             "V2_LAUNCHER_IMAGE": harness.charm.config["launcher-image"],
             "ARCHIVE_CONFIG_LOG_FILE_NAME": harness.charm.config["log-archive-filename"],
@@ -582,6 +583,29 @@ class TestCharm:
 
         assert test_env == expected_env
         assert model_name == test_env["POD_NAMESPACE"]
+
+    @patch("charm.KubernetesServicePatch", lambda x, y: None)
+    @patch("charm.Client")
+    @patch("charm.KfpApiOperator.k8s_resource_handler")
+    def test_cache_enabled_config(
+        self,
+        k8s_resource_handler: MagicMock,
+        mock_client: MagicMock,
+        harness: Harness,
+        mock_s3_client,
+    ):
+        """Propagate the default and both config transitions to the Pebble service."""
+        harness.set_leader(True)
+        self.setup_required_relations(harness)
+        harness.begin_with_initial_hooks()
+        harness.container_pebble_ready(KFP_API_CONTAINER_NAME)
+
+        for cache_enabled in (True, False, True):
+            harness.update_config({"cache-enabled": cache_enabled})
+            plan = harness.get_container_pebble_plan(KFP_API_CONTAINER_NAME).to_dict()
+            environment = plan["services"][KFP_API_SERVICE_NAME]["environment"]
+            assert environment["CACHEENABLED"] == str(cache_enabled).lower()
+            assert harness.charm.container.get_service("apiserver").is_running()
 
     @patch("charm.KubernetesServicePatch", lambda x, y: None)
     @patch("charm.Client")
